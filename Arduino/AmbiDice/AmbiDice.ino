@@ -51,6 +51,11 @@ int64_t  sumX = 0, sumY = 0, sumZ = 0; // Summed accelerometer values
 uint32_t nMeasurements = 0;            // Number of measurements to average over
 int8_t   currentFace;                  // Current face of the dice
 
+boolean  connected = false;            // Connection state
+uint32_t lastConnectionMillis = 0;     // Timer value of last connection
+
+const uint16_t CON_DELAY = 1000;       // Delay before sending data after connection
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Setup and initialization ////////////////////////////////////////////////////
@@ -69,6 +74,7 @@ void setup() {
   mpu.setSleepEnabled(false);
 
   udp.begin(LOCAL_PORT); // Initalize UDP
+
   pinMode(LED_BUILTIN, OUTPUT);
 }
 
@@ -77,47 +83,55 @@ void setup() {
 // Loop ////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 void loop() {
-  if (wifi_softap_get_station_num() > 0) { // Check if any clients are connected
-    digitalWrite(LED_BUILTIN, LOW);
+  if (wifi_softap_get_station_num() > 0 ) {
+    if (!connected) {
+      connected = true;
+      digitalWrite(LED_BUILTIN, LOW);
+      lastConnectionMillis = millis();
+    } else {
+      if (millis() - lastConnectionMillis > CON_DELAY) {
+        mpu.getAcceleration(&x, &y, &z); // Get current sensor values
 
-    mpu.getAcceleration(&x, &y, &z); // Get current sensor values
-    sendRaw(REMOTE_IP);
+        sendRaw(REMOTE_IP);
 
-    // Sum up the values and increase measurement counter
-    sumX += x;
-    sumY += y;
-    sumZ += z;
-    nMeasurements++;
+        // Sum up the values and increase measurement counter
+        sumX += x;
+        sumY += y;
+        sumZ += z;
+        nMeasurements++;
 
-    // Send current face periodically
-    uint32_t cMillis = millis();
-    if ((cMillis - pMillis >= INTERVAL)) {
-      pMillis = cMillis;
-      int16_t averageX = sumX / nMeasurements;
-      int16_t averageY = sumY / nMeasurements;
-      int16_t averageZ = sumZ / nMeasurements;
+        // Send current face periodically
+        uint32_t cMillis = millis();
+        if ((cMillis - pMillis >= INTERVAL)) {
+          pMillis = cMillis;
+          int16_t averageX = sumX / nMeasurements;
+          int16_t averageY = sumY / nMeasurements;
+          int16_t averageZ = sumZ / nMeasurements;
 
-      // Calculate current face using cosine similarity
-      VectorInt16 v(averageX, averageY, averageZ);
-      float maxSimilarity = -1.0f;
-      uint8_t newFace = 0;
-      for (uint8_t i = 0; i < faces.size(); i++) {
-        float similarity = v.getCosineSimilarityTo(faces[i]);
-        if (similarity > maxSimilarity) {
-          newFace = i;
-          maxSimilarity = similarity;
+          // Calculate current face using cosine similarity
+          VectorInt16 v(averageX, averageY, averageZ);
+          float maxSimilarity = -1.0f;
+          uint8_t newFace = 0;
+          for (uint8_t i = 0; i < faces.size(); i++) {
+            float similarity = v.getCosineSimilarityTo(faces[i]);
+            if (similarity > maxSimilarity) {
+              newFace = i;
+              maxSimilarity = similarity;
+            }
+          }
+          currentFace = newFace;
+          sendFace(REMOTE_IP);
+
+          // Reset values
+          sumX = 0;
+          sumY = 0;
+          sumZ = 0;
+          nMeasurements = 0;
         }
       }
-      currentFace = newFace;
-      sendFace(REMOTE_IP);
-
-      // Reset values
-      sumX = 0;
-      sumY = 0;
-      sumZ = 0;
-      nMeasurements = 0;
     }
   } else {
+    connected = false;
     digitalWrite(LED_BUILTIN, HIGH);
   }
 }
