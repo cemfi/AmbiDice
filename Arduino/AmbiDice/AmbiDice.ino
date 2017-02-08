@@ -1,6 +1,7 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUDP.h>
 #include <Wire.h>
+#include "OSCMessage.h"
 #include <array>
 #include "helper_3dmath.h" // 3D vector class definitions
 #include "MPU6050.h"       // IMU library
@@ -138,41 +139,25 @@ void loop() {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-// "Byte-banged" OSC messages. Sorry for the mess... ///////////////////////////
+// OSC sending methods /////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-// Union helper to access individual bytes of a 32 bit integer
-union Int32Union {
-  int32_t int32;
-  byte bytes[4];
-};
-
-void writeNull(uint8_t n) {
-  for (; n > 0; n--)
-    udp.write(uint8_t(0x00));
-}
-
 void sendFace(const char* ip) {
+  OSCMessage msg("/ambidice/face");
+  msg.add(currentFace);
+
   udp.beginPacket(ip, REMOTE_PORT);
-  udp.write("/ambidice/face");  writeNull(2);
-  udp.write(",i");  writeNull(2);
-  writeNull(3); udp.write(currentFace);
+  msg.send(udp);
   udp.endPacket();
 }
-
 
 void sendRaw(const char* ip) {
-  Int32Union x32 = {(int32_t) x};
-  Int32Union y32 = {(int32_t) y};
-  Int32Union z32 = {(int32_t) z};
+  OSCMessage msg("/ambidice/raw");
+  msg.add(x);
+  msg.add(y);
+  msg.add(z);
 
   udp.beginPacket(ip, REMOTE_PORT);
-  udp.write("/ambidice/raw");  writeNull(3);
-  udp.write(",iii");
-  writeNull(4);
-  udp.write(x32.bytes[3]); udp.write(x32.bytes[2]); udp.write(x32.bytes[1]); udp.write(x32.bytes[0]);
-  udp.write(y32.bytes[3]); udp.write(y32.bytes[2]); udp.write(y32.bytes[1]); udp.write(y32.bytes[0]);
-  udp.write(z32.bytes[3]); udp.write(z32.bytes[2]); udp.write(z32.bytes[1]); udp.write(z32.bytes[0]);
+  msg.send(udp);
   udp.endPacket();
 }
-
